@@ -174,27 +174,3 @@ if __name__ == "__main__":
         
         else:
             print("Invalid choice, try again.")
-
-
-
-
-
-
-
-# files = list_plans()
-
-# if not files:
-#     continue
-
-# choice = input("\nEnter number to view: ")
-
-# if not choice.isdigit():
-#     print("Invalid input.")
-#     continue
-
-# index = int(choice) - 1
-
-# if 0 <= index < len(files):
-#     read_plan(files[index])
-# else:
-#     print("Invalid selection.")
