@@ -37,7 +37,7 @@ def list_plans():
 
 # read the file
 def read_plan(filename:str):
-    filepath = os.path.joib(PLANS_DIR, filename)
+    filepath = os.path.join(PLANS_DIR, filename)
     try:
         with open(filepath,"r") as file:
             content=file.read()
