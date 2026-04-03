@@ -4,6 +4,7 @@ import os
 import json
 import time
 from datetime import datetime
+
 DEBUG = False
 
 PLANS_DIR = "plans"
@@ -13,8 +14,7 @@ if not os.path.exists(PLANS_DIR):
 load_dotenv()
 client = OpenAI()
 MODEL = "gpt-4o-mini"
-MAX50 = 50
-MAX10 = 10
+
 
 
 # Search for list files
@@ -52,7 +52,7 @@ def analyze_task(task:str)->str:
     response = client.responses.create(
         model=MODEL,
         input=f"in one short sentence, decide if task is easy or hard this format: 'Easy: reason' or 'Hard: reason' -> {task}",
-        max_output_tokens=MAX50
+        max_output_tokens=50
     )
     return response.output[0].content[0].text
 
@@ -63,17 +63,28 @@ def break_down_task(task: str) -> str:
     response = client.responses.create(
         model=MODEL,
         input = f"""
-        Task: {task}
-        Return only valid JSON
-        Return JSON only in this format:
-        {{
-            "steps":["step 1", "step 2", "step 3"]
+        You are a QA engineer. 
+
+        Given the follow feature or scenario, generate exactly 2 test cases.
+
+        Return only valid JSON in this format: {{
+            "test_cases":[
+                {{
+                    "title":"short test case name",
+                    "steps":["step 1","step 2","step 3"],
+                    "expected": "expected result of test case
+                }}
+            ]
         }}
 
         Rules:
-        - Exactly 3 steps
-        - Each step is one short sentence
+        - Exactly 3 test cases
+        - Each test case must have 3 steps
+        - Steps must be clear user actions in one sentence each
+        - Expected result must be one short sentence describing the expected outcome of the test case
         - No extra text outside JSON
+
+        Scenario: {task}
         """,
         max_output_tokens=150
     )
@@ -81,53 +92,70 @@ def break_down_task(task: str) -> str:
     print("Done breaking task down!")
     print(f"Tokens used: {response.usage}")
     raw_text = response.output[0].content[0].text
-    return raw_text
+
+    if DEBUG:
+        print("\n--- RAW AI RESPONSE ---\n")
+        print(raw_text)
+    
+    cleaned = raw_text.strip() # Remove leading and trailing whitespace. Whitespace can cause issues when trying to parse JSON
+
+    if cleaned.startswith("```"):
+        cleaned = cleaned.replace("```json","").replace("```","").strip() # If the response is wrapped in markdown code blocks, remove them.
+    
+    if DEBUG:
+        print("\n--- CLEANED JSON ---\n")
+        print(cleaned)
+
+    return cleaned
 
 
 def job_helper(task: str) -> str:
     analysis = analyze_task(task)
-    if "Easy" in analysis:
-        return f"{analysis} \nYou can do this now!"
-    elif "Hard" in analysis:
-        breakdown = break_down_task(task)
-        if DEBUG:
-            print(f"RAW JSON: {breakdown}") # print the raw JSON string returned by the model for debugging purposes
-        # json.loads() takes json data and deserializes it into a python object (in this case, a dictionary). We can then access the "steps" key to get the list of steps.
-        try:
-            data = json.loads(breakdown)
-            # data is a dictionary with a key "steps" which contains a list of steps. We can access the steps using data["steps"]
-            steps = data["steps"]
-        except json.JSONDecodeError:
-            print("Failed to parse AI response as JSON. Showing raw output:\n")
-            print(breakdown)
-            return "Error: AI response was not valid JSON"    
 
-        
-        print(f"{analysis}\n\nHere's a plan:")
-        for step in steps:
-            input("Press Enter to see the next step...")
-            print(f"- {step}\n")
+    print(f"{analysis}\n\nGenerating test cases...")
 
-        # create a filename based on the task name, replacing spaces with underscores and converting to lowercase. This is to ensure that the filename is valid and doesn't contain any special characters or spaces.
-        # safe_task = task.replace(" ","_").lower()
+    breakdown = break_down_task(task)
 
-        safe_task = "".join(character for character in task.lower() if character.isalnum() or character == " ").strip().replace(" ","_")[:50] # remove special characters, replace spaces with underscores, and limit filename length to 50 characters
-        filename = f"plan_{safe_task}.txt"
-        filename = os.path.join(PLANS_DIR, f"plan_{safe_task}.txt") # save the file in the plans directory
+    if DEBUG:
+        print("\n--- FINAL JSON BEING PARSED ---\n")
+        print(breakdown)
+        print(f"\nTYPE: {type(breakdown)}")
+
+    try:
+        data = json.loads(breakdown) #json.loads() takes json data and deserializes it into a python object (in this case, a dictionary). We can then access the "steps" key to get the list of steps.
+        test_cases = data["test_cases"][:2] # take only the first 2 test cases to ensure we don't exceed our token limit when printing steps. In a real application, you would want to handle this more robustly, perhaps by paginating the output or allowing the user to select which test cases to view.
+    except json.JSONDecodeError:
+        print("Failed to parse AI response as JSON. \n")
+        print(breakdown)
+        return "Error: AI response was not valid JSON"
+    
+    for case in test_cases:
+        print(f"\nTest Case: {case['title']}")
+        input("Press Enter to see steps...")
+
+        for step in case["steps"]:
+            print(f"- {step}")
+            time.sleep(.5) # add a small delay between steps for better readability. (Don't use in prod for obvious reasons, but it helps with readability in this demo.)
+        print(f"Expected: {case['expected']}\n")
+
+    safe_task = "".join(character for character in task.lower() if character.isalnum() or character == " ").strip().replace(" ","_")[:50] # remove special characters, replace spaces with underscores, and limit filename length to 50 characters
+    filename = f"plan_{safe_task}.txt"
+    filename = os.path.join(PLANS_DIR, f"plan_{safe_task}.txt") # save the file in the plans directory
 
         # opens a file called plan.txt in write mode. If the file doesn't exist, it will be created. If it does exist, it will be overwritten.
         # "w" writes to the file, "a" appends to the file, "r" reads the file. We use a context manager (the with statement) to ensure that the file is properly closed after we're done writing to it.
-        with open(filename,"w") as file: 
-            file.write(f"\n=== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
-            file.write(f"Task: {task}\n")
-            file.write(f"{analysis}\n\nPlan:\n")
-            for step in steps:
+    with open(filename,"w") as file: 
+        file.write(f"\n=== {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+        file.write(f"Generated by AI QA Assistant\n")
+        file.write(f"Task: {task}\n")
+        file.write(f"{analysis}\n\n=== Test Cases ===\n")
+        for case in test_cases:
+            file.write(f"\nTest Case: {case['title']}\n")
+            for step in case["steps"]:
                 file.write(f"- {step}\n")
+            file.write(f"Expected: {case['expected']}\n")
 
-        return ""
-    
-    else:
-        return "Couldn't analyze the task."
+    return ""
 
 
 # Execution
@@ -162,7 +190,7 @@ if __name__ == "__main__":
             # set index to the integer value of file_choice minus 1 to account for 0-based indexing of the files list
             index = int(file_choice) - 1
 
-            # Check if the entered index is valid when compared to the length of the files list. If is is valid, call read_plan with the selected file.
+            # Check if the entered index is valid when compared to the length of the files list. If it is valid, call read_plan with the selected file.
             if 0 <= index < len(files):
                 read_plan(files[index])
             else:
