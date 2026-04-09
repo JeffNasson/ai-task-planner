@@ -66,6 +66,7 @@ def read_plan(filename:str):
 
 
 
+# Houses prompting logic
 # This function takes a task description as input and uses the OpenAI API to generate test cases based on that task. It sends a prompt to the model asking it to create 3 test cases (positive, negative, and edge) in a specific JSON format. The response is then cleaned and returned as a string. The function also includes debug prints to help with troubleshooting and understanding the AI's response.
 def break_down_task(task: str) -> str:
     print("Breaking task down...")
@@ -84,6 +85,7 @@ def break_down_task(task: str) -> str:
             "test_cases":[
                 {{
                     "title":"short test case name",
+                    "url": "https://www.example.com/login",
                     "type": "positive, negative, or edge",
                     "steps":["step 1","step 2","step 3"],
                     "expected": "expected result of test case",
@@ -140,7 +142,8 @@ def run_test_cases(test_cases):
             context = browser.new_context() # create a new browser context for each test case to ensure isolation
             page = context.new_page() # create a new page within the context
 
-            page.goto("https://www.google.com") # temporary url
+            url = case.get("url","https://www.google.com") # get the url from the test case, or default to google if not provided
+            page.goto(url)
 
             for i, step in enumerate(case["steps"], start =1):
                 print(f"{i}. {step}")
