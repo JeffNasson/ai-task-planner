@@ -143,7 +143,7 @@ def run_test_cases(test_cases):
             page = context.new_page() # create a new page within the context
 
             url = case.get("url","https://www.google.com") # get the url from the test case, or default to google if not provided
-            page.goto(url)
+            page.goto("https://the-internet.herokuapp.com/login") # navigate to herokuapp login page for demo purposes. In a real application, you would use the url provided in the test case.
 
             for i, step in enumerate(case["steps"], start =1):
                 print(f"{i}. {step}")
@@ -152,6 +152,24 @@ def run_test_cases(test_cases):
             print(f"Assertion: {case['assertion']}\n")
 
             try:
+                if case["type"] == "positive":
+                    username = "tomsmith"
+                    password = "SuperSecretPassword!"
+
+                elif case["type"] == "negative":
+                    username = "tomsmithfail"
+                    password = "wrongpassword"
+                
+                elif case["type"] == "edge":
+                    username = ""
+                    password = ""
+
+                # Fill login form
+                page.fill("#username", username)
+                page.fill("#password", password)
+                # Submit form
+                page.click("button[type='submit']")
+
                 run_real_assertion(page, case['assertion'])
             except AssertionError as e:
                 print(f"\nFail: {e}\n") # If test fails, print a failure message and execute the next test case instead of stopping the whole process.
